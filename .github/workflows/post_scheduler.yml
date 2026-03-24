@@ -1,0 +1,84 @@
+name: SNS Auto Post Scheduler
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 毎時実行 (Slackメモ同期 + 投稿時間チェック)
+  workflow_dispatch:
+    inputs:
+      force_post:
+        description: '強制投稿する (投稿時間に関係なく実行)'
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            anthropic \
+            google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client \
+            slack-sdk \
+            tweepy \
+            requests
+
+      - name: Sync Slack to Sheets
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python scripts/slack_to_sheets.py
+
+      - name: Check if post time
+        id: check_time
+        run: |
+          if [[ "${{ github.event.inputs.force_post }}" == "true" ]]; then
+            echo "should_post=true" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(python -c "from datetime import datetime, timezone, timedelta; print(datetime.now(timezone(timedelta(hours=9))).hour)")
+            if [[ "$HOUR" == "7" || "$HOUR" == "12" || "$HOUR" == "19" ]]; then
+              echo "should_post=true" >> $GITHUB_OUTPUT
+            else
+              echo "should_post=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Generate post
+        if: steps.check_time.outputs.should_post == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python scripts/generate_post.py
+
+      - name: Post to X
+        if: steps.check_time.outputs.should_post == 'true'
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: python scripts/post_x.py
+
+      - name: Post to Threads
+        if: steps.check_time.outputs.should_post == 'true'
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+        run: python scripts/post_threads.py
+
+      - name: Notify Slack
+        if: steps.check_time.outputs.should_post == 'true'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_NOTIFY_CHANNEL_ID: ${{ secrets.SLACK_NOTIFY_CHANNEL_ID }}
+        run: python scripts/notify_slack.py
