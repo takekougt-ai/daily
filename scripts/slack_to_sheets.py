@@ -12,6 +12,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 
 JST = timezone(timedelta(hours=9))
+FETCH_DAYS = 7  # 取得対象期間（日）
 
 
 def get_sheets_service():
@@ -42,11 +43,21 @@ def get_existing_timestamps(service):
 
 def fetch_slack_messages():
     client = WebClient(token=SLACK_BOT_TOKEN)
-    oldest = (datetime.now(timezone.utc) - timedelta(hours=2)).timestamp()
-    response = client.conversations_history(
-        channel=SLACK_CHANNEL_ID, oldest=str(oldest)
-    )
-    return response["messages"]
+    oldest = (datetime.now(timezone.utc) - timedelta(days=FETCH_DAYS)).timestamp()
+    messages = []
+    cursor = None
+
+    while True:
+        kwargs = {"channel": SLACK_CHANNEL_ID, "oldest": str(oldest), "limit": 200}
+        if cursor:
+            kwargs["cursor"] = cursor
+        response = client.conversations_history(**kwargs)
+        messages.extend(response["messages"])
+        if not response.get("response_metadata", {}).get("next_cursor"):
+            break
+        cursor = response["response_metadata"]["next_cursor"]
+
+    return messages
 
 
 def append_to_sheets(service, rows):
@@ -87,7 +98,7 @@ def main():
         append_to_sheets(service, new_rows)
         print(f"Added {len(new_rows)} new memos to Sheets")
     else:
-        print("No new memos")
+        print("No new memos (all already synced or no messages in past {FETCH_DAYS} days)")
 
 
 if __name__ == "__main__":
