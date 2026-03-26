@@ -2,7 +2,8 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -13,7 +14,7 @@ GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 JST = timezone(timedelta(hours=9))
 POST_FILE = "/tmp/generated_post.txt"
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def get_sheets_service():
@@ -62,12 +63,13 @@ def generate_post(memos_text):
     now = datetime.now(JST)
     time_context = f"現在時刻: {now.strftime('%Y-%m-%d %H:%M')} JST"
 
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction=system_prompt,
-    )
-    response = model.generate_content(
-        f"{time_context}\n\n以下のメモから1つのSNS投稿文を作成してください:\n\n{memos_text}"
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=f"{time_context}\n\n以下のメモから1つのSNS投稿文を作成してください:\n\n{memos_text}",
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=1024,
+        ),
     )
     return response.text
 
@@ -82,7 +84,6 @@ def main():
             f.write("")
         return
 
-    # 最新の最大3件を使用
     selected = pending[-3:]
     memos_text = "\n".join([f"- {row[2]}" for _, row in selected])
     row_numbers = [row_num for row_num, _ in selected]

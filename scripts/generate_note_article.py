@@ -2,7 +2,8 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -13,7 +14,7 @@ GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 JST = timezone(timedelta(hours=9))
 ARTICLE_FILE = "/tmp/note_article.json"
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def get_sheets_service():
@@ -59,17 +60,19 @@ def generate_article(memos):
     week_str = now.strftime("%Y年%m月第%W週")
     memos_text = "\n".join([f"- {m}" for m in memos])
 
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction=system_prompt,
-    )
-    response = model.generate_content(
-        f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
-        "これらのメモをもとにnote記事を作成してください。"
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=(
+            f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
+            "これらのメモをもとにnote記事を作成してください。"
+        ),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=2048,
+        ),
     )
 
     raw = response.text.strip()
-    # JSON部分だけ抽出
     start = raw.find("{")
     end = raw.rfind("}") + 1
     return json.loads(raw[start:end])

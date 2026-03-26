@@ -2,7 +2,7 @@ name: Note Weekly Article
 
 on:
   schedule:
-    - cron: '0 10 * * 0'  # 毎週日曜 19:00 JST (= 10:00 UTC)
+    - cron: '0 10 * * 0'
   workflow_dispatch:
     inputs:
       force_post:
@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install \
-            google-generativeai \
+            google-genai \
             google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client \
             playwright
           playwright install chromium
