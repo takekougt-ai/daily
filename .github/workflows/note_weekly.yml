@@ -1,0 +1,44 @@
+name: Note Weekly Article
+
+on:
+  schedule:
+    - cron: '0 10 * * 0'  # 毎週日曜 19:00 JST (= 10:00 UTC)
+  workflow_dispatch:
+    inputs:
+      force_post:
+        description: '強制投稿する（テスト用）'
+        type: boolean
+        default: false
+
+jobs:
+  post_note:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            anthropic \
+            google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client \
+            playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Generate Note article
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python scripts/generate_note_article.py
+
+      - name: Post to Note
+        env:
+          NOTE_EMAIL: ${{ secrets.NOTE_EMAIL }}
+          NOTE_PASSWORD: ${{ secrets.NOTE_PASSWORD }}
+        run: python scripts/post_note.py
