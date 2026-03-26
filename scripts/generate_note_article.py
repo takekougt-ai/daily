@@ -26,11 +26,17 @@ def get_sheets_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def get_first_sheet_name(service):
+    meta = service.spreadsheets().get(spreadsheetId=GOOGLE_SHEETS_ID).execute()
+    return meta["sheets"][0]["properties"]["title"]
+
+
 def get_weekly_memos(service):
+    sheet = get_first_sheet_name(service)
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=GOOGLE_SHEETS_ID, range="Sheet1!A:D")
+        .get(spreadsheetId=GOOGLE_SHEETS_ID, range=f"{sheet}!A:D")
         .execute()
     )
     rows = result.get("values", [])

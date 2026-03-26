@@ -26,11 +26,17 @@ def get_sheets_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def get_first_sheet_name(service):
+    meta = service.spreadsheets().get(spreadsheetId=GOOGLE_SHEETS_ID).execute()
+    return meta["sheets"][0]["properties"]["title"]
+
+
 def get_pending_memos(service):
+    sheet = get_first_sheet_name(service)
     result = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=GOOGLE_SHEETS_ID, range="Sheet1!A:D")
+        .get(spreadsheetId=GOOGLE_SHEETS_ID, range=f"{sheet}!A:D")
         .execute()
     )
     rows = result.get("values", [])
@@ -43,8 +49,9 @@ def get_pending_memos(service):
 
 
 def mark_as_used(service, row_numbers):
+    sheet = get_first_sheet_name(service)
     requests = [
-        {"range": f"Sheet1!D{n}", "values": [["used"]]} for n in row_numbers
+        {"range": f"{sheet}!D{n}", "values": [["used"]]} for n in row_numbers
     ]
     if requests:
         service.spreadsheets().values().batchUpdate(
