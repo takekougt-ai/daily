@@ -9,6 +9,14 @@ on:
         description: '強制投稿する (投稿時間に関係なく実行)'
         type: boolean
         default: false
+      enable_x:
+        description: 'X（Twitter）に投稿する'
+        type: boolean
+        default: false
+      enable_threads:
+        description: 'Threadsに投稿する'
+        type: boolean
+        default: false
 
 jobs:
   run:
@@ -61,7 +69,7 @@ jobs:
         run: python scripts/generate_post.py
 
       - name: Post to X
-        if: steps.check_time.outputs.should_post == 'true'
+        if: steps.check_time.outputs.should_post == 'true' && github.event.inputs.enable_x == 'true'
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
@@ -70,7 +78,7 @@ jobs:
         run: python scripts/post_x.py
 
       - name: Post to Threads
-        if: steps.check_time.outputs.should_post == 'true'
+        if: steps.check_time.outputs.should_post == 'true' && github.event.inputs.enable_threads == 'true'
         env:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
