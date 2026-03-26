@@ -1,24 +1,25 @@
 # SNS Auto Post Bot
 
-Slackに一行メモを送るだけで、Claude APIが投稿文を生成してX（Twitter）とThreadsに自動投稿するシステム。
+Slackに一行メモを送るだけで、Claude APIが投稿文を生成してX（Twitter）・Threads・noteに自動投稿するシステム。
 
 ## アーキテクチャ
 
 ```
 Slack #post-memo にメモ送信
         ↓
-GitHub Actions (毎時実行)
+GitHub Actions（毎時実行）
         ↓
 slack_to_sheets.py → Google Sheets にメモを蓄積
         ↓
-    [7:00 / 12:00 / 19:00 JST のみ]
+    [7:00 / 12:00 / 19:00 JST のみ]        [毎週日曜 19:00 JST]
+        ↓                                           ↓
+generate_post.py                       generate_note_article.py
+Claude API で短文生成                   Claude API で週報記事生成
+        ↓                                           ↓
+post_x.py → X に投稿                    post_note.py → note に投稿
+post_threads.py → Threads に投稿
         ↓
-generate_post.py → Claude API で投稿文生成
-        ↓
-post_x.py        → X に投稿
-post_threads.py  → Threads に投稿
-        ↓
-notify_slack.py  → Slack に完了通知
+notify_slack.py → Slack に完了通知
 ```
 
 ## セットアップ
@@ -41,6 +42,8 @@ Settings → Secrets and variables → Actions に以下を登録。
 | `X_ACCESS_TOKEN_SECRET` | X (Twitter) Access Token Secret |
 | `THREADS_ACCESS_TOKEN` | Threads API Access Token |
 | `THREADS_USER_ID` | Threads のユーザーID |
+| `NOTE_EMAIL` | noteアカウントのメールアドレス |
+| `NOTE_PASSWORD` | noteアカウントのパスワード |
 
 ### 2. Slack Bot の設定
 
@@ -87,3 +90,24 @@ AIで3時間かかってた作業が5分になった
 | 7:00 JST | 投稿生成 → X/Threads 投稿 → Slack通知 |
 | 12:00 JST | 投稿生成 → X/Threads 投稿 → Slack通知 |
 | 19:00 JST | 投稿生成 → X/Threads 投稿 → Slack通知 |
+| 毎週日曜 19:00 JST | 週報記事生成 → note 投稿 |
+
+## ファイル構成
+
+```
+.
+├── .github/workflows/
+│   ├── post_scheduler.yml        # X/Threads 毎日投稿
+│   └── note_weekly.yml           # note 週次投稿
+├── scripts/
+│   ├── slack_to_sheets.py        # Slackメモ → Google Sheets同期
+│   ├── generate_post.py          # X/Threads用 短文生成
+│   ├── post_x.py                 # X（Twitter）投稿
+│   ├── post_threads.py           # Threads投稿
+│   ├── notify_slack.py           # Slack完了通知
+│   ├── generate_note_article.py  # note用 週報記事生成
+│   └── post_note.py              # note投稿（Playwright）
+└── prompts/
+    ├── system_prompt.txt         # X/Threads用プロンプト
+    └── note_article_prompt.txt   # note用プロンプト
+```
