@@ -1,6 +1,6 @@
 # SNS Auto Post Bot
 
-Slackに一行メモを送るだけで、Claude APIが投稿文を生成してX（Twitter）・Threads・noteに自動投稿するシステム。
+Slackに一行メモを送るだけで、Gemini APIが投稿文を生成してX（Twitter）・Threads・noteに自動投稿するシステム。
 
 ## アーキテクチャ
 
@@ -14,7 +14,7 @@ slack_to_sheets.py → Google Sheets にメモを蓄積
     [7:00 / 12:00 / 19:00 JST のみ]        [毎週日曜 19:00 JST]
         ↓                                           ↓
 generate_post.py                       generate_note_article.py
-Claude API で短文生成                   Claude API で週報記事生成
+Gemini API で短文生成                   Gemini API で週報記事生成
         ↓                                           ↓
 post_x.py → X に投稿                    post_note.py → note に投稿
 post_threads.py → Threads に投稿
@@ -35,7 +35,7 @@ Settings → Secrets and variables → Actions に以下を登録。
 | `SLACK_NOTIFY_CHANNEL_ID` | 完了通知を送るSlackチャンネルのID |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Google サービスアカウントのJSONキー（文字列全体） |
 | `GOOGLE_SHEETS_ID` | Google SheetsのID（URLの `/d/〜/edit` の部分） |
-| `ANTHROPIC_API_KEY` | Anthropic APIキー |
+| `GEMINI_API_KEY` | Gemini APIキー |
 | `X_API_KEY` | X (Twitter) API Key |
 | `X_API_SECRET` | X (Twitter) API Secret |
 | `X_ACCESS_TOKEN` | X (Twitter) Access Token |

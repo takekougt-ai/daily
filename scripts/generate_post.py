@@ -2,16 +2,18 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-import anthropic
+import google.generativeai as genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 
 JST = timezone(timedelta(hours=9))
 POST_FILE = "/tmp/generated_post.txt"
+
+genai.configure(api_key=GEMINI_API_KEY)
 
 
 def get_sheets_service():
@@ -56,27 +58,18 @@ def load_system_prompt():
 
 
 def generate_post(memos_text):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     system_prompt = load_system_prompt()
-
     now = datetime.now(JST)
     time_context = f"現在時刻: {now.strftime('%Y-%m-%d %H:%M')} JST"
 
-    message = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=1024,
-        system=system_prompt,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"{time_context}\n\n"
-                    f"以下のメモから1つのSNS投稿文を作成してください:\n\n{memos_text}"
-                ),
-            }
-        ],
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=system_prompt,
     )
-    return message.content[0].text
+    response = model.generate_content(
+        f"{time_context}\n\n以下のメモから1つのSNS投稿文を作成してください:\n\n{memos_text}"
+    )
+    return response.text
 
 
 def main():

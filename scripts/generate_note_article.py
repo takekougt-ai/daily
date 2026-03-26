@@ -2,16 +2,18 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 
-import anthropic
+import google.generativeai as genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 
 JST = timezone(timedelta(hours=9))
 ARTICLE_FILE = "/tmp/note_article.json"
+
+genai.configure(api_key=GEMINI_API_KEY)
 
 
 def get_sheets_service():
@@ -52,30 +54,21 @@ def load_system_prompt():
 
 
 def generate_article(memos):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     system_prompt = load_system_prompt()
-
     now = datetime.now(JST)
     week_str = now.strftime("%Y年%m月第%W週")
     memos_text = "\n".join([f"- {m}" for m in memos])
 
-    message = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"期間: {week_str}\n\n"
-                    f"今週のメモ一覧:\n{memos_text}\n\n"
-                    "これらのメモをもとにnote記事を作成してください。"
-                ),
-            }
-        ],
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=system_prompt,
+    )
+    response = model.generate_content(
+        f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
+        "これらのメモをもとにnote記事を作成してください。"
     )
 
-    raw = message.content[0].text.strip()
+    raw = response.text.strip()
     # JSON部分だけ抽出
     start = raw.find("{")
     end = raw.rfind("}") + 1

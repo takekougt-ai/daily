@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install \
-            anthropic \
+            google-generativeai \
             google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client \
             playwright
           playwright install chromium
@@ -32,7 +32,7 @@ jobs:
 
       - name: Generate Note article
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
         run: python scripts/generate_note_article.py
