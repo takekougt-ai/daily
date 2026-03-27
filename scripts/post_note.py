@@ -3,12 +3,11 @@ import os
 import sys
 import time
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 NOTE_EMAIL = os.environ["NOTE_EMAIL"]
 NOTE_PASSWORD = os.environ["NOTE_PASSWORD"]
 ARTICLE_FILE = "/tmp/note_article.json"
-NOTE_POST_ID_FILE = "/tmp/note_post_id.txt"
 
 
 def load_article():
@@ -27,49 +26,127 @@ def post_to_note(title, body):
             )
         )
         page = context.new_page()
+        page.set_default_timeout(60000)
 
-        # ログイン
+        # ログインページ
+        print("[Note] Navigating to login page...")
         page.goto("https://note.com/login")
         page.wait_for_load_state("networkidle")
+        print(f"[Note] Login page URL: {page.url}")
 
-        page.fill('input[name="email"]', NOTE_EMAIL)
-        page.fill('input[name="password"]', NOTE_PASSWORD)
-        page.click('button[type="submit"]')
+        # メール入力（複数のセレクタを試行）
+        email_selectors = [
+            'input[name="email"]',
+            'input[type="email"]',
+            'input[placeholder*="メール"]',
+            'input[placeholder*="mail"]',
+        ]
+        for sel in email_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=5000)
+                page.fill(sel, NOTE_EMAIL)
+                print(f"[Note] Filled email with selector: {sel}")
+                break
+            except PlaywrightTimeoutError:
+                continue
+        else:
+            print("[Note] Could not find email input. Page content:")
+            print(page.content()[:2000])
+            raise RuntimeError("Email input not found")
+
+        # パスワード入力
+        password_selectors = [
+            'input[name="password"]',
+            'input[type="password"]',
+        ]
+        for sel in password_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=5000)
+                page.fill(sel, NOTE_PASSWORD)
+                print(f"[Note] Filled password with selector: {sel}")
+                break
+            except PlaywrightTimeoutError:
+                continue
+        else:
+            raise RuntimeError("Password input not found")
+
+        # ログインボタン
+        submit_selectors = [
+            'button[type="submit"]',
+            'button:has-text("ログイン")',
+            'input[type="submit"]',
+        ]
+        for sel in submit_selectors:
+            try:
+                page.click(sel, timeout=5000)
+                print(f"[Note] Clicked submit with selector: {sel}")
+                break
+            except PlaywrightTimeoutError:
+                continue
+
         page.wait_for_load_state("networkidle")
-        time.sleep(2)
+        time.sleep(3)
+        print(f"[Note] After login URL: {page.url}")
 
-        # 新規記事作成ページへ
+        # 新規記事作成
         page.goto("https://note.com/notes/new")
         page.wait_for_load_state("networkidle")
-        time.sleep(2)
+        time.sleep(3)
+        print(f"[Note] Editor URL: {page.url}")
 
         # タイトル入力
-        title_selector = 'textarea[placeholder="記事タイトル"], [data-placeholder="記事タイトル"], .title'
-        page.wait_for_selector(title_selector, timeout=10000)
-        page.click(title_selector)
-        page.fill(title_selector, title)
+        title_selectors = [
+            'textarea[placeholder="記事タイトル"]',
+            '[data-placeholder="記事タイトル"]',
+            'h1[contenteditable]',
+            '.title-input',
+        ]
+        for sel in title_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=5000)
+                page.click(sel)
+                page.fill(sel, title) if 'textarea' in sel or 'input' in sel else page.type(sel, title)
+                print(f"[Note] Filled title with selector: {sel}")
+                break
+            except PlaywrightTimeoutError:
+                continue
+        else:
+            print("[Note] Could not find title input. Dumping page content:")
+            print(page.content()[:2000])
+            raise RuntimeError("Title input not found")
 
-        # 本文入力（contenteditable）
-        body_selector = '.ProseMirror, [contenteditable="true"].editor__body, .note-editor__body'
-        page.wait_for_selector(body_selector, timeout=10000)
-        page.click(body_selector)
-        # JavaScriptでテキストを設定してから入力イベントを発火
-        page.evaluate(
-            "(sel, text) => { "
-            "  const el = document.querySelector(sel); "
-            "  if (el) { el.innerText = text; "
-            "    el.dispatchEvent(new Event('input', {bubbles: true})); } "
-            "}",
-            body_selector,
-            body,
-        )
-        time.sleep(1)
+        # 本文入力
+        body_selectors = [
+            '.ProseMirror',
+            '[contenteditable="true"]',
+            '.note-editor__body',
+        ]
+        for sel in body_selectors:
+            try:
+                page.wait_for_selector(sel, timeout=5000)
+                page.click(sel)
+                page.evaluate(
+                    "(sel, text) => { "
+                    "  const el = document.querySelector(sel); "
+                    "  if (el) { el.innerText = text; "
+                    "    el.dispatchEvent(new Event('input', {bubbles: true})); } "
+                    "}",
+                    sel, body,
+                )
+                print(f"[Note] Filled body with selector: {sel}")
+                break
+            except PlaywrightTimeoutError:
+                continue
+        else:
+            raise RuntimeError("Body input not found")
+
+        time.sleep(2)
 
         # 公開ボタン
-        publish_btn = page.locator('button:has-text("公開設定へ"), button:has-text("投稿")')
+        publish_btn = page.locator('button:has-text("公開設定へ"), button:has-text("投稿"), button:has-text("公開")')
         publish_btn.first.click()
         page.wait_for_load_state("networkidle")
-        time.sleep(2)
+        time.sleep(3)
 
         # 公開確認ダイアログ
         confirm_btn = page.locator('button:has-text("公開する")')
@@ -78,11 +155,10 @@ def post_to_note(title, body):
             page.wait_for_load_state("networkidle")
             time.sleep(3)
 
-        # 投稿後のURLからIDを取得
         current_url = page.url
-        print(f"Published URL: {current_url}")
+        print(f"[Note] Published URL: {current_url}")
 
-        with open(NOTE_POST_ID_FILE, "w") as f:
+        with open("/tmp/note_post_url.txt", "w") as f:
             f.write(current_url)
 
         browser.close()
@@ -101,8 +177,9 @@ def main():
         print("Missing title or body. Skipping Note post.")
         sys.exit(0)
 
+    print(f"[Note] Posting article: {title}")
     url = post_to_note(title, body)
-    print(f"Posted to Note: {url}")
+    print(f"[Note] Done: {url}")
 
 
 if __name__ == "__main__":
