@@ -75,13 +75,13 @@ def generate_article(memos):
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=2048,
+            response_mime_type="application/json",
         ),
     )
 
     raw = response.text.strip()
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    return json.loads(raw[start:end])
+    print(f"[Gemini] Raw response preview: {raw[:200]}")
+    return json.loads(raw)
 
 
 def main():
