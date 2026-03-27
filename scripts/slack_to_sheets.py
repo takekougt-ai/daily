@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone, timedelta
 
 from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -12,7 +13,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 
 JST = timezone(timedelta(hours=9))
-FETCH_DAYS = 7  # 取得対象期間（日）
+FETCH_DAYS = 7
 
 
 def get_sheets_service():
@@ -43,19 +44,33 @@ def get_existing_timestamps(service):
 
 def fetch_slack_messages():
     client = WebClient(token=SLACK_BOT_TOKEN)
+
+    # チャンネル情報をデバッグ出力
+    try:
+        info = client.conversations_info(channel=SLACK_CHANNEL_ID)
+        ch = info["channel"]
+        print(f"[Slack] Channel: #{ch['name']} (id={ch['id']}, is_member={ch.get('is_member', '?')}")
+    except SlackApiError as e:
+        print(f"[Slack] conversations_info error: {e.response['error']}")
+
     oldest = (datetime.now(timezone.utc) - timedelta(days=FETCH_DAYS)).timestamp()
     messages = []
     cursor = None
 
-    while True:
-        kwargs = {"channel": SLACK_CHANNEL_ID, "oldest": str(oldest), "limit": 200}
-        if cursor:
-            kwargs["cursor"] = cursor
-        response = client.conversations_history(**kwargs)
-        messages.extend(response["messages"])
-        if not response.get("response_metadata", {}).get("next_cursor"):
-            break
-        cursor = response["response_metadata"]["next_cursor"]
+    try:
+        while True:
+            kwargs = {"channel": SLACK_CHANNEL_ID, "oldest": str(oldest), "limit": 200}
+            if cursor:
+                kwargs["cursor"] = cursor
+            response = client.conversations_history(**kwargs)
+            messages.extend(response["messages"])
+            print(f"[Slack] Fetched {len(response['messages'])} messages (total so far: {len(messages)})")
+            if not response.get("response_metadata", {}).get("next_cursor"):
+                break
+            cursor = response["response_metadata"]["next_cursor"]
+    except SlackApiError as e:
+        print(f"[Slack] conversations_history error: {e.response['error']}")
+        raise
 
     return messages
 
@@ -75,7 +90,10 @@ def append_to_sheets(service, rows):
 def main():
     service = get_sheets_service()
     existing_ts = get_existing_timestamps(service)
+    print(f"[Sheets] Existing timestamps: {len(existing_ts)}")
+
     messages = fetch_slack_messages()
+    print(f"[Slack] Total messages fetched: {len(messages)}")
 
     new_rows = []
     for msg in messages:
@@ -85,7 +103,6 @@ def main():
         text = msg.get("text", "").strip()
         if not text or msg.get("subtype"):
             continue
-
         dt = datetime.fromtimestamp(float(ts), tz=JST)
         new_rows.append([
             ts,
@@ -94,11 +111,12 @@ def main():
             "pending",
         ])
 
+    print(f"[Sheets] New rows to add: {len(new_rows)}")
     if new_rows:
         append_to_sheets(service, new_rows)
-        print(f"Added {len(new_rows)} new memos to Sheets")
+        print(f"[Sheets] Added {len(new_rows)} new memos")
     else:
-        print("No new memos (all already synced or no messages in past {FETCH_DAYS} days)")
+        print("[Sheets] Nothing to add")
 
 
 if __name__ == "__main__":
