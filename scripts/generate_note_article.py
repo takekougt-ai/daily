@@ -66,12 +66,16 @@ def generate_article(memos):
     week_str = now.strftime("%Y年%m月第%W週")
     memos_text = "\n".join([f"- {m}" for m in memos])
 
+    # JSON形式で返すようプロンプトに明記
+    contents = (
+        f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
+        "これらのメモをもとにnote記事を作成してください。"
+        '\u5fc5ず {"title": "タイトル", "body": "本文"} のJSON形式で返してください。'
+    )
+
     response = client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=(
-            f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
-            "これらのメモをもとにnote記事を作成してください。"
-        ),
+        contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=2048,
@@ -79,9 +83,25 @@ def generate_article(memos):
         ),
     )
 
-    raw = response.text.strip()
-    print(f"[Gemini] Raw response preview: {raw[:200]}")
-    return json.loads(raw)
+    raw = response.text.strip() if response.text else ""
+    print(f"[Gemini] Raw response preview: {raw[:300]}")
+
+    if not raw:
+        raise RuntimeError("Gemini returned empty response")
+
+    # JSONブロックを抽出（コードブロックに包まれている場合に対応）
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise RuntimeError(f"No JSON object found in response: {raw[:300]}")
+
+    return json.loads(raw[start:end])
 
 
 def main():
