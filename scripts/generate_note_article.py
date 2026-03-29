@@ -13,6 +13,7 @@ GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
 
 JST = timezone(timedelta(hours=9))
 ARTICLE_FILE = "/tmp/note_article.json"
+MAX_MEMOS = 20
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -52,7 +53,7 @@ def get_weekly_memos(service):
             continue
         if dt >= one_week_ago:
             memos.append(row[2])
-    return memos
+    return memos[-MAX_MEMOS:]  # 最新MAX_MEMOS件に限定
 
 
 def load_system_prompt():
@@ -66,11 +67,10 @@ def generate_article(memos):
     week_str = now.strftime("%Y年%m月第%W週")
     memos_text = "\n".join([f"- {m}" for m in memos])
 
-    # JSON形式で返すようプロンプトに明記
     contents = (
         f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
-        "これらのメモをもとにnote記事を作成してください。"
-        '\u5fc5ず {"title": "タイトル", "body": "本文"} のJSON形式で返してください。'
+        "これらのメモをもとにnote記事を作成してください。\n"
+        "出力形式: {\"title\": \"記事タイトル\", \"body\": \"記事本文\"} のJSONのみ返すこと。外側の説明文不要。"
     )
 
     response = client.models.generate_content(
@@ -79,27 +79,30 @@ def generate_article(memos):
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=2048,
-            response_mime_type="application/json",
         ),
     )
 
-    raw = response.text.strip() if response.text else ""
-    print(f"[Gemini] Raw response preview: {raw[:300]}")
+    raw = (response.text or "").strip()
+    print(f"[Gemini] Raw response ({len(raw)} chars): {raw[:300]}")
 
     if not raw:
-        raise RuntimeError("Gemini returned empty response")
+        raise RuntimeError("Gemini returned empty response. Check safety filters or model availability.")
 
-    # JSONブロックを抽出（コードブロックに包まれている場合に対応）
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    # ```json ... ``` ブロックを除去
+    if "```" in raw:
+        parts = raw.split("```")
+        for part in parts:
+            part = part.strip()
+            if part.startswith("json"):
+                part = part[4:].strip()
+            if part.startswith("{"):
+                raw = part
+                break
 
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start == -1 or end == 0:
-        raise RuntimeError(f"No JSON object found in response: {raw[:300]}")
+        raise RuntimeError(f"No JSON found in response: {raw[:300]}")
 
     return json.loads(raw[start:end])
 
