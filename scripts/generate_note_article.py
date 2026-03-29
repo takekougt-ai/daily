@@ -53,7 +53,7 @@ def get_weekly_memos(service):
             continue
         if dt >= one_week_ago:
             memos.append(row[2])
-    return memos[-MAX_MEMOS:]  # 最新MAX_MEMOS件に限定
+    return memos[-MAX_MEMOS:]
 
 
 def load_system_prompt():
@@ -61,50 +61,41 @@ def load_system_prompt():
         return f.read()
 
 
-def generate_article(memos):
+def generate_title_and_body(memos):
     system_prompt = load_system_prompt()
     now = datetime.now(JST)
     week_str = now.strftime("%Y年%m月第%W週")
     memos_text = "\n".join([f"- {m}" for m in memos])
 
-    contents = (
-        f"期間: {week_str}\n\n今週のメモ一覧:\n{memos_text}\n\n"
-        "これらのメモをもとにnote記事を作成してください。\n"
-        "出力形式: {\"title\": \"記事タイトル\", \"body\": \"記事本文\"} のJSONのみ返すこと。外側の説明文不要。"
-    )
-
-    response = client.models.generate_content(
+    # タイトルと本文を分けて生成することでJSON切れを回避
+    title_resp = client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=contents,
+        contents=f"期間: {week_str}\nメモ: {memos_text}\n\n記事タイトルのみ30字以内で生成してください。実際のタイトル文字列のみ出力。",
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=100,
+        ),
+    )
+    title = (title_resp.text or "").strip().strip('"')
+    print(f"[Gemini] Title: {title}")
+
+    body_resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=(
+            f"期間: {week_str}\nメモ: {memos_text}\n\n"
+            f"タイトル「{title}」の本文をMarkdown形式で600字以内で生成してください。"
+            "本文のみ出力。JSON不要。"
+        ),
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=2048,
         ),
     )
+    body = (body_resp.text or "").strip()
+    finish = body_resp.candidates[0].finish_reason if body_resp.candidates else "unknown"
+    print(f"[Gemini] Body ({len(body)} chars, finish_reason={finish})")
 
-    raw = (response.text or "").strip()
-    print(f"[Gemini] Raw response ({len(raw)} chars): {raw[:300]}")
-
-    if not raw:
-        raise RuntimeError("Gemini returned empty response. Check safety filters or model availability.")
-
-    # ```json ... ``` ブロックを除去
-    if "```" in raw:
-        parts = raw.split("```")
-        for part in parts:
-            part = part.strip()
-            if part.startswith("json"):
-                part = part[4:].strip()
-            if part.startswith("{"):
-                raw = part
-                break
-
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    if start == -1 or end == 0:
-        raise RuntimeError(f"No JSON found in response: {raw[:300]}")
-
-    return json.loads(raw[start:end])
+    return title, body
 
 
 def main():
@@ -118,8 +109,12 @@ def main():
         return
 
     print(f"Generating article from {len(memos)} memos...")
-    article = generate_article(memos)
+    title, body = generate_title_and_body(memos)
 
+    if not title or not body:
+        raise RuntimeError(f"Empty response from Gemini. title={bool(title)}, body={bool(body)}")
+
+    article = {"title": title, "body": body}
     with open(ARTICLE_FILE, "w", encoding="utf-8") as f:
         json.dump(article, f, ensure_ascii=False, indent=2)
 
