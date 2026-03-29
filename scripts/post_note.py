@@ -88,20 +88,14 @@ def post_to_note(title, body):
             print(page.content()[:3000])
             raise RuntimeError("Title input not found")
 
-        # 本文入力（クリップボード経由でProseMirrorに貳り付け）
+        # 本文入力（execCommand insertTextでProseMirrorのinputイベントを発火）
         for sel in [".ProseMirror", '[contenteditable="true"]']:
             try:
                 page.wait_for_selector(sel, timeout=5000)
                 page.click(sel)
                 page.keyboard.press("Control+a")
                 page.evaluate(
-                    """(text) => {
-                        const dt = new DataTransfer();
-                        dt.setData('text/plain', text);
-                        document.activeElement.dispatchEvent(
-                            new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})
-                        );
-                    }""",
+                    "(text) => document.execCommand('insertText', false, text)",
                     body,
                 )
                 print(f"[Note] Filled body: {sel}")
