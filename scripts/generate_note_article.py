@@ -1,10 +1,14 @@
 import os
 import json
+import time
 from datetime import datetime, timezone, timedelta
 
+import httplib2
 from google import genai
 from google.genai import types
 from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+import google_auth_httplib2
 from googleapiclient.discovery import build
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
@@ -24,12 +28,23 @@ def get_sheets_service():
         creds_info,
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
-    return build("sheets", "v4", credentials=creds)
+    creds.refresh(Request())
+    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
+    return build("sheets", "v4", http=http)
 
 
 def get_first_sheet_name(service):
-    meta = service.spreadsheets().get(spreadsheetId=GOOGLE_SHEETS_ID).execute()
-    return meta["sheets"][0]["properties"]["title"]
+    for attempt in range(3):
+        try:
+            meta = service.spreadsheets().get(spreadsheetId=GOOGLE_SHEETS_ID).execute()
+            return meta["sheets"][0]["properties"]["title"]
+        except Exception as e:
+            if attempt < 2:
+                wait = 2 ** attempt
+                print(f"[Sheets] Retry {attempt+1}/3 after {wait}s: {e}")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def get_weekly_memos(service):
