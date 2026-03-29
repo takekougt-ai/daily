@@ -5,7 +5,7 @@ import time
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-NOTE_AUTH_TOKEN = os.environ["NOTE_AUTH_TOKEN"]
+NOTE_SESSION = os.environ["NOTE_SESSION"]
 ARTICLE_FILE = "/tmp/note_article.json"
 
 
@@ -36,8 +36,8 @@ def post_to_note(title, body):
         # Cookieで直接認証（ログインフォーム不要）
         context.add_cookies([
             {
-                "name": "note_gql_auth_token",
-                "value": NOTE_AUTH_TOKEN,
+                "name": "_note_session_v5",
+                "value": NOTE_SESSION,
                 "domain": ".note.com",
                 "path": "/",
                 "secure": True,
@@ -62,8 +62,8 @@ def post_to_note(title, body):
 
         if "login" in page.url:
             raise RuntimeError(
-                "Redirected to login. NOTE_AUTH_TOKEN may be expired. "
-                "Please refresh the cookie from your browser."
+                "Redirected to login. NOTE_SESSION may be expired. "
+                "Please refresh _note_session_v5 cookie from your browser."
             )
 
         # タイトル入力

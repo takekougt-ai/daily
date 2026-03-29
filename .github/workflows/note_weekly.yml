@@ -41,5 +41,5 @@ jobs:
 
       - name: Post to Note
         env:
-          NOTE_AUTH_TOKEN: ${{ secrets.NOTE_AUTH_TOKEN }}
+          NOTE_SESSION: ${{ secrets.NOTE_SESSION }}
         run: python scripts/post_note.py
