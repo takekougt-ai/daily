@@ -76,10 +76,9 @@ def post_to_note(title, body):
             try:
                 page.wait_for_selector(sel, timeout=5000)
                 page.click(sel)
-                if "textarea" in sel:
-                    page.fill(sel, title)
-                else:
-                    page.type(sel, title)
+                page.keyboard.press("Control+a")
+                page.keyboard.press("Delete")
+                page.keyboard.type(title)
                 print(f"[Note] Filled title: {sel}")
                 break
             except PlaywrightTimeoutError:
@@ -89,16 +88,21 @@ def post_to_note(title, body):
             print(page.content()[:3000])
             raise RuntimeError("Title input not found")
 
-        # 本文入力
+        # 本文入力（クリップボード経由でProseMirrorに貳り付け）
         for sel in [".ProseMirror", '[contenteditable="true"]']:
             try:
                 page.wait_for_selector(sel, timeout=5000)
                 page.click(sel)
+                page.keyboard.press("Control+a")
                 page.evaluate(
-                    "([sel, text]) => { const el = document.querySelector(sel); "
-                    "if (el) { el.innerText = text; "
-                    "el.dispatchEvent(new Event('input', {bubbles: true})); } }",
-                    [sel, body],
+                    """(text) => {
+                        const dt = new DataTransfer();
+                        dt.setData('text/plain', text);
+                        document.activeElement.dispatchEvent(
+                            new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true})
+                        );
+                    }""",
+                    body,
                 )
                 print(f"[Note] Filled body: {sel}")
                 break
