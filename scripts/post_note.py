@@ -95,10 +95,10 @@ def post_to_note(title, body):
                 page.wait_for_selector(sel, timeout=5000)
                 page.click(sel)
                 page.evaluate(
-                    "(sel, text) => { const el = document.querySelector(sel); "
+                    "([sel, text]) => { const el = document.querySelector(sel); "
                     "if (el) { el.innerText = text; "
                     "el.dispatchEvent(new Event('input', {bubbles: true})); } }",
-                    sel, body,
+                    [sel, body],
                 )
                 print(f"[Note] Filled body: {sel}")
                 break
