@@ -5,8 +5,7 @@ import time
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-NOTE_EMAIL = os.environ["NOTE_EMAIL"]
-NOTE_PASSWORD = os.environ["NOTE_PASSWORD"]
+NOTE_AUTH_TOKEN = os.environ["NOTE_AUTH_TOKEN"]
 ARTICLE_FILE = "/tmp/note_article.json"
 
 
@@ -19,12 +18,7 @@ def post_to_note(title, body):
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--window-size=1280,800",
-            ],
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
         )
         context = browser.new_context(
             user_agent=(
@@ -35,47 +29,30 @@ def post_to_note(title, body):
             viewport={"width": 1280, "height": 800},
             locale="ja-JP",
         )
-        # webdriverプロパティを隐薔
-        context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        """)
+        context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+        )
+
+        # Cookieで直接認証（ログインフォーム不要）
+        context.add_cookies([
+            {
+                "name": "note_gql_auth_token",
+                "value": NOTE_AUTH_TOKEN,
+                "domain": ".note.com",
+                "path": "/",
+                "secure": True,
+                "httpOnly": True,
+            }
+        ])
+
         page = context.new_page()
         page.set_default_timeout(60000)
 
-        print("[Note] Navigating to login page...")
-        page.goto("https://note.com/login")
+        # 認証確認
+        print("[Note] Checking auth...")
+        page.goto("https://note.com")
         page.wait_for_load_state("networkidle")
-        time.sleep(2)
-        print(f"[Note] Login page URL: {page.url}")
-
-        # メール入力（idで直指定）
-        page.wait_for_selector("input#email", timeout=10000)
-        page.click("input#email")
-        time.sleep(0.5)
-        page.fill("input#email", NOTE_EMAIL)
-        print("[Note] Filled email")
-
-        # パスワード入力
-        page.wait_for_selector("input#password", timeout=10000)
-        page.click("input#password")
-        time.sleep(0.5)
-        page.fill("input#password", NOTE_PASSWORD)
-        print("[Note] Filled password")
-
-        # ログインボタンをクリック
-        page.click('button:has-text("ログイン")')
-        page.wait_for_load_state("networkidle")
-        time.sleep(3)
-        print(f"[Note] After login URL: {page.url}")
-
-        # ログイン失敗のチェック
-        if "login" in page.url:
-            error_text = page.locator(".error, [class*='error'], [class*='alert']").all_text_contents()
-            print(f"[Note] Login failed. Error messages: {error_text}")
-            print(f"[Note] Page title: {page.title()}")
-            raise RuntimeError(f"Login failed. Still on login page. Errors: {error_text}")
-
-        print("[Note] Login successful!")
+        print(f"[Note] Top page URL: {page.url}")
 
         # 新規記事作成ページ
         page.goto("https://note.com/notes/new")
@@ -84,16 +61,18 @@ def post_to_note(title, body):
         print(f"[Note] Editor URL: {page.url}")
 
         if "login" in page.url:
-            raise RuntimeError("Redirected to login page. Session not maintained.")
+            raise RuntimeError(
+                "Redirected to login. NOTE_AUTH_TOKEN may be expired. "
+                "Please refresh the cookie from your browser."
+            )
 
         # タイトル入力
-        title_selectors = [
+        for sel in [
             'textarea[placeholder="記事タイトル"]',
             '[data-placeholder="記事タイトル"]',
             'h1[contenteditable]',
             'div[contenteditable][data-placeholder]',
-        ]
-        for sel in title_selectors:
+        ]:
             try:
                 page.wait_for_selector(sel, timeout=5000)
                 page.click(sel)
