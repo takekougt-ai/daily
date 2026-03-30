@@ -1,8 +1,8 @@
 name: SNS Auto Post Scheduler
 
 on:
-  schedule:
-    - cron: '0 * * * *'
+  # schedule:
+  #   - cron: '0 * * * *'  # 毎時実行（無効化中）
   workflow_dispatch:
     inputs:
       force_post:

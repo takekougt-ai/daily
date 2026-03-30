@@ -1,8 +1,8 @@
 name: Note Weekly Article
 
 on:
-  schedule:
-    - cron: '0 10 * * 0'
+  # schedule:
+  #   - cron: '0 10 * * 0'  # 毎週日曜19:00 JST（無効化中）
   workflow_dispatch:
     inputs:
       force_post:
